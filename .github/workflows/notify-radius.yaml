@@ -1,13 +1,21 @@
 # yaml-language-server: $schema=https://www.schemastore.org/github-workflow.json
 ---
-name: Notify Radius
+name: notify-radius
 
-# Fires a `repository_dispatch` event to radius-project/radius whenever the
-# default contrib resource type manifests change on `main`. The Radius repo
-# responds by opening a PR that runs `make update-resource-types`, which
-# refreshes the manifest copies committed under
-# `deploy/manifest/built-in-providers/`. Merging that PR republishes the
-# unified `radius` Bicep extension at `br:biceptypes.azurecr.io/radius:latest`.
+# Fires a `repository_dispatch` event to radius-project/radius whenever
+# resource type manifests change on `main`. The Radius repo responds by opening
+# a PR that runs `make update-resource-types`, which refreshes the manifest
+# copies committed under `deploy/manifest/built-in-providers/`. Merging that PR
+# triggers the existing `build-and-push-bicep-types` job in build.yaml, which
+# dispatches to radius-publisher to republish `radius:latest` with the updated
+# types.
+#
+# End-to-end flow:
+#   1. This workflow fires repository_dispatch on push to main
+#   2. Radius repo's contrib-update-resource-types.yaml receives it
+#   3. Opens a PR to refresh manifest copies via make update-resource-types
+#   4. Human merges the PR
+#   5. Push to main triggers build.yaml -> radius-publisher -> biceptypes.azurecr.io
 #
 # See the design note in the radius repo:
 #   eng/design-notes/extensibility/2026-05-unified-bicep-extension-publishing.md
@@ -17,15 +25,15 @@ on:
     branches:
       - main
     paths:
-      # Only fire when files that ship in the unified `radius` Bicep extension
-      # change. Recipes and other resources are out of scope.
-      - "Compute/**/*.yaml"
-      - "Compute/**/*.yml"
-      - "Data/**/*.yaml"
-      - "Data/**/*.yml"
-      - "Security/**/*.yaml"
-      - "Security/**/*.yml"
-  workflow_dispatch:
+      # Trigger on any YAML change that could be a resource type manifest.
+      # Excludes .github/ and docs/ which contain non-manifest YAML files.
+      # This avoids hardcoding namespace folder names (Compute/, Data/, etc.)
+      # so new top-level namespace folders are automatically covered.
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "!.github/**"
+      - "!docs/**"
+  # workflow_dispatch: # Enable during development for manual testing
 
 permissions: {}
 
@@ -41,6 +49,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Send repository_dispatch to radius-project/radius
+        # Fires a repository_dispatch event that the Radius repo's
+        # contrib-update-resource-types.yaml workflow listens for.
+        # The payload includes the commit SHA for traceability in the
+        # automated PR's commit message and body. Note: the SHA is
+        # informational only -- the Radius workflow always fetches
+        # the latest version via 'go get ...@latest'.
         uses: peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0 # v3.0.0
         with:
           token: ${{ secrets.GH_RAD_CI_BOT_PAT }}
@@ -54,6 +68,7 @@ jobs:
             }
 
       - name: Summarize
+        # Write a summary to the GitHub Actions UI for visibility.
         run: |
           {
             echo "## Notified radius-project/radius"

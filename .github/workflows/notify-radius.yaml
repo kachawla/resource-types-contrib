@@ -17,6 +17,13 @@ name: notify-radius
 #   4. Human merges the PR
 #   5. Push to main triggers build.yaml -> radius-publisher -> biceptypes.azurecr.io
 #
+# Note: only resource types listed in the Radius repo's
+# deploy/manifest/defaults.yaml are included in the unified extension.
+# If a new namespace folder is added here but not added to defaults.yaml,
+# the dispatch will fire but make update-resource-types will find no changes
+# and no PR will be opened. The new types only appear in the extension when
+# someone adds them to defaults.yaml in the Radius repo.
+#
 # See the design note in the radius repo:
 #   eng/design-notes/extensibility/2026-05-unified-bicep-extension-publishing.md
 
